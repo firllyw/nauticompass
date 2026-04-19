@@ -28,19 +28,19 @@ export function evaluateAlerts(
   // Wave height
   if (marine.wave_height >= ALERT_THRESHOLDS.waveHeight.danger) {
     bump('danger');
-    messages.push(`Wave height ${marine.wave_height.toFixed(1)}m — DANGER`);
+    messages.push(`Wave height ${marine.wave_height?.toFixed(1)}m — DANGER`);
   } else if (marine.wave_height >= ALERT_THRESHOLDS.waveHeight.warning) {
     bump('warning');
-    messages.push(`Wave height ${marine.wave_height.toFixed(1)}m — WARNING`);
+    messages.push(`Wave height ${marine.wave_height?.toFixed(1)}m — WARNING`);
   }
 
   // Swell height
   if (marine.swell_wave_height >= ALERT_THRESHOLDS.swellHeight.danger) {
     bump('danger');
-    messages.push(`Swell ${marine.swell_wave_height.toFixed(1)}m — DANGER`);
+    messages.push(`Swell ${marine.swell_wave_height?.toFixed(1)}m — DANGER`);
   } else if (marine.swell_wave_height >= ALERT_THRESHOLDS.swellHeight.warning) {
     bump('warning');
-    messages.push(`Swell ${marine.swell_wave_height.toFixed(1)}m — WARNING`);
+    messages.push(`Swell ${marine.swell_wave_height?.toFixed(1)}m — WARNING`);
   }
 
   // Wind speed (forecast API returns km/h)
@@ -59,10 +59,10 @@ export function evaluateAlerts(
   // Ocean current
   if (marine.ocean_current_velocity >= ALERT_THRESHOLDS.currentVelocity.danger) {
     bump('danger');
-    messages.push(`Current ${marine.ocean_current_velocity.toFixed(1)} m/s — DANGER`);
+    messages.push(`Current ${marine.ocean_current_velocity?.toFixed(1)} m/s — DANGER`);
   } else if (marine.ocean_current_velocity >= ALERT_THRESHOLDS.currentVelocity.warning) {
     bump('warning');
-    messages.push(`Current ${marine.ocean_current_velocity.toFixed(1)} m/s — WARNING`);
+    messages.push(`Current ${marine.ocean_current_velocity?.toFixed(1)} m/s — WARNING`);
   }
 
   // Weather code

@@ -1,27 +1,27 @@
 // app/(tabs)/index.tsx
 // Map Screen — Leaflet.js via react-native-webview
 // No Google Maps API key required. Pure OSM + OpenSeaMap.
-import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
-import {
-  StyleSheet,
-  View,
-  Text,
-  TouchableOpacity,
-  Modal,
-  ScrollView,
-  ActivityIndicator,
-} from 'react-native';
-import WebView, { WebViewMessageEvent } from 'react-native-webview';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useShippingLanes } from '@/hooks/useShippingLanes';
-import { useMarineWeather } from '@/hooks/useMarineWeather';
-import { evaluateAlerts } from '@/utils/weatherUtils';
-import { PORTS, Port } from '@/constants/ports';
-import { COLORS } from '@/constants/colors';
-import { useRoute } from '@/context/RouteContext';
-import WeatherOverlay from '@/components/WeatherOverlay';
 import AlertBanner from '@/components/AlertBanner';
 import RouteCard from '@/components/RouteCard';
+import WeatherOverlay from '@/components/WeatherOverlay';
+import { COLORS } from '@/constants/colors';
+import { PORTS, Port } from '@/constants/ports';
+import { useRoute } from '@/context/RouteContext';
+import { useMarineWeather } from '@/hooks/useMarineWeather';
+import { useShippingLanes } from '@/hooks/useShippingLanes';
+import { evaluateAlerts } from '@/utils/weatherUtils';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import WebView, { WebViewMessageEvent } from 'react-native-webview';
 
 // ─── Map defaults ────────────────────────────────────────────────────────────
 const INITIAL_LAT = -2.5;
@@ -397,7 +397,7 @@ export default function MapScreen() {
                   {selectedPort.country} · {selectedPort.unlocode}
                 </Text>
                 <Text style={styles.portModalCoords}>
-                  {selectedPort.latitude.toFixed(4)}°, {selectedPort.longitude.toFixed(4)}°
+                  {selectedPort.latitude?.toFixed(4)}°, {selectedPort.longitude?.toFixed(4)}°
                 </Text>
                 <Text style={styles.portModalTz}>TZ: {selectedPort.timezone}</Text>
                 <TouchableOpacity

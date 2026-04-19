@@ -1,8 +1,8 @@
 // components/WeatherOverlay.tsx
-import React from 'react';
-import { View, Text, StyleSheet, ActivityIndicator } from 'react-native';
-import { degreesToCardinal, kmhToKnots } from '@/utils/geoUtils';
 import { WeatherData } from '@/services/openMeteoService';
+import { degreesToCardinal, kmhToKnots } from '@/utils/geoUtils';
+import React from 'react';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 
 interface WeatherOverlayProps {
   marine: WeatherData['marine'] | null;
@@ -57,7 +57,7 @@ export default function WeatherOverlay({
       <View style={styles.row}>
         <View style={styles.metric}>
           <Text style={styles.metricIcon}>🌊</Text>
-          <Text style={styles.metricValue}>{cur.wave_height.toFixed(1)}m</Text>
+          <Text style={styles.metricValue}>{cur.wave_height?.toFixed(1)}m</Text>
           <Text style={styles.metricLabel}>Wave {waveDir}</Text>
         </View>
         <View style={styles.divider} />
@@ -73,13 +73,13 @@ export default function WeatherOverlay({
       <View style={styles.row}>
         <View style={styles.metric}>
           <Text style={styles.metricIcon}>🌀</Text>
-          <Text style={styles.metricValue}>{cur.swell_wave_height.toFixed(1)}m</Text>
+          <Text style={styles.metricValue}>{cur.swell_wave_height?.toFixed(1)}m</Text>
           <Text style={styles.metricLabel}>Swell</Text>
         </View>
         <View style={styles.divider} />
         <View style={styles.metric}>
           <Text style={styles.metricIcon}>🌡</Text>
-          <Text style={styles.metricValue}>{cur.sea_surface_temperature.toFixed(1)}°C</Text>
+          <Text style={styles.metricValue}>{cur.sea_surface_temperature?.toFixed(1)}°C</Text>
           <Text style={styles.metricLabel}>SST</Text>
         </View>
       </View>

@@ -1,10 +1,10 @@
 // components/WeatherPanel.tsx
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
 import { COLORS } from '@/constants/colors';
-import { degreesToCardinal, kmhToKnots } from '@/utils/geoUtils';
-import { weatherCodeLabel, evaluateAlerts } from '@/utils/weatherUtils';
 import { WeatherData } from '@/services/openMeteoService';
+import { degreesToCardinal, kmhToKnots } from '@/utils/geoUtils';
+import { evaluateAlerts, weatherCodeLabel } from '@/utils/weatherUtils';
+import React from 'react';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 interface WeatherPanelProps {
   data: WeatherData | null;
@@ -73,8 +73,8 @@ export default function WeatherPanel({ data, loading, error, lastUpdated, fromCa
     alertLevel === 'danger'
       ? COLORS.danger
       : alertLevel === 'warning'
-      ? COLORS.warning
-      : COLORS.success;
+        ? COLORS.warning
+        : COLORS.success;
   const alertText =
     alertLevel === 'danger' ? 'DANGER' : alertLevel === 'warning' ? 'WARNING' : 'ALL CLEAR';
 
@@ -105,19 +105,19 @@ export default function WeatherPanel({ data, loading, error, lastUpdated, fromCa
         <Text style={styles.cardTitle}>Current Conditions</Text>
         <Text style={styles.weatherCondition}>{weatherCodeLabel(fcCur.weather_code)}</Text>
         <View style={styles.grid}>
-          <MetricRow label="Wave Height" value={`${marCur.wave_height.toFixed(1)} m`} />
+          <MetricRow label="Wave Height" value={`${marCur.wave_height?.toFixed(1)} m`} />
           <MetricRow label="Wave Direction" value={degreesToCardinal(marCur.wave_direction)} />
           <MetricRow label="Wave Period" value={`${marCur.wave_period?.toFixed(1) ?? '—'} s`} />
-          <MetricRow label="Swell Height" value={`${marCur.swell_wave_height.toFixed(1)} m`} />
+          <MetricRow label="Swell Height" value={`${marCur.swell_wave_height?.toFixed(1)} m`} />
           <MetricRow label="Swell Period" value={`${marCur.swell_wave_period?.toFixed(1) ?? '—'} s`} />
-          <MetricRow label="Wind Speed" value={`${windKnots.toFixed(1)} kn`} />
-          <MetricRow label="Wind Gusts" value={`${windGustKnots.toFixed(1)} kn`} />
+          <MetricRow label="Wind Speed" value={`${windKnots?.toFixed(1)} kn`} />
+          <MetricRow label="Wind Gusts" value={`${windGustKnots?.toFixed(1)} kn`} />
           <MetricRow label="Wind Direction" value={degreesToCardinal(fcCur.wind_direction_10m)} />
           <MetricRow
             label="Visibility"
-            value={fcCur.visibility != null ? `${(fcCur.visibility / 1000).toFixed(1)} km` : '—'}
+            value={fcCur.visibility != null ? `${(fcCur.visibility / 1000)?.toFixed(1)} km` : '—'}
           />
-          <MetricRow label="Sea Surface Temp" value={`${marCur.sea_surface_temperature.toFixed(1)} °C`} />
+          <MetricRow label="Sea Surface Temp" value={`${marCur.sea_surface_temperature?.toFixed(1)} °C`} />
         </View>
       </View>
 
@@ -137,11 +137,11 @@ export default function WeatherPanel({ data, loading, error, lastUpdated, fromCa
         <View style={styles.grid}>
           <MetricRow
             label="Current Speed"
-            value={`${marCur.ocean_current_velocity.toFixed(2)} m/s · ${(marCur.ocean_current_velocity * 1.94384).toFixed(1)} kn`}
+            value={`${marCur.ocean_current_velocity?.toFixed(2)} m/s · ${(marCur.ocean_current_velocity * 1.94384)?.toFixed(1)} kn`}
           />
           <MetricRow label="Current Direction" value={degreesToCardinal(marCur.ocean_current_direction)} />
           {currentCurrentVel != null && (
-            <MetricRow label="Hourly Velocity" value={`${currentCurrentVel.toFixed(2)} m/s`} />
+            <MetricRow label="Hourly Velocity" value={`${currentCurrentVel?.toFixed(2)} m/s`} />
           )}
         </View>
       </View>
@@ -156,7 +156,7 @@ export default function WeatherPanel({ data, loading, error, lastUpdated, fromCa
             return (
               <View key={day} style={styles.dayCard}>
                 <Text style={styles.dayLabel}>{formatDay(day)}</Text>
-                <Text style={[styles.dayWave, { color: waveColor }]}>{maxWave.toFixed(1)}m</Text>
+                <Text style={[styles.dayWave, { color: waveColor }]}>{maxWave?.toFixed(1)}m</Text>
                 <Text style={styles.daySubLabel}>max wave</Text>
               </View>
             );

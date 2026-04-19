@@ -1,19 +1,19 @@
 // app/(tabs)/route.tsx
 // Route Planning Screen
-import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  TouchableOpacity,
-  TextInput,
-} from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '@/constants/colors';
 import { PORTS, Port } from '@/constants/ports';
 import { useRoute } from '@/context/RouteContext';
-import { distanceNM, bearingDeg, estimateETA, formatETA, degreesToCardinal } from '@/utils/geoUtils';
+import { bearingDeg, degreesToCardinal, distanceNM, estimateETA, formatETA } from '@/utils/geoUtils';
+import React, { useState } from 'react';
+import {
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function RouteScreen() {
   const insets = useSafeAreaInsets();
@@ -64,7 +64,7 @@ export default function RouteScreen() {
                 <Text style={styles.portName}>{port.name}</Text>
                 <Text style={styles.portMeta}>{port.country} · {port.unlocode}</Text>
                 <Text style={styles.portCoords}>
-                  {port.latitude.toFixed(4)}°, {port.longitude.toFixed(4)}°
+                  {port.latitude?.toFixed(4)}°, {port.longitude?.toFixed(4)}°
                 </Text>
               </View>
             </TouchableOpacity>
@@ -219,7 +219,7 @@ function WaypointRow({
         <Text style={styles.waypointLabel}>{label}</Text>
         <Text style={styles.waypointPort}>{port.name}</Text>
         <Text style={styles.waypointCoords}>
-          {port.latitude.toFixed(4)}°, {port.longitude.toFixed(4)}°
+          {port.latitude?.toFixed(4)}°, {port.longitude?.toFixed(4)}°
         </Text>
       </View>
       <View style={styles.waypointBadge}>

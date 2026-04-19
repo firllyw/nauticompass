@@ -693,19 +693,19 @@ export function evaluateAlerts(marine, forecast) {
   // Wave height
   if (marine.wave_height >= ALERT_THRESHOLDS.waveHeight.danger) {
     bump('danger');
-    messages.push(`Wave height ${marine.wave_height.toFixed(1)}m — DANGER`);
+    messages.push(`Wave height ${marine.wave_height?.toFixed(1)}m — DANGER`);
   } else if (marine.wave_height >= ALERT_THRESHOLDS.waveHeight.warning) {
     bump('warning');
-    messages.push(`Wave height ${marine.wave_height.toFixed(1)}m — WARNING`);
+    messages.push(`Wave height ${marine.wave_height?.toFixed(1)}m — WARNING`);
   }
 
   // Swell height
   if (marine.swell_wave_height >= ALERT_THRESHOLDS.swellHeight.danger) {
     bump('danger');
-    messages.push(`Swell ${marine.swell_wave_height.toFixed(1)}m — DANGER`);
+    messages.push(`Swell ${marine.swell_wave_height?.toFixed(1)}m — DANGER`);
   } else if (marine.swell_wave_height >= ALERT_THRESHOLDS.swellHeight.warning) {
     bump('warning');
-    messages.push(`Swell ${marine.swell_wave_height.toFixed(1)}m — WARNING`);
+    messages.push(`Swell ${marine.swell_wave_height?.toFixed(1)}m — WARNING`);
   }
 
   // Wind speed (forecast API returns km/h)
@@ -724,10 +724,10 @@ export function evaluateAlerts(marine, forecast) {
   // Ocean current
   if (marine.ocean_current_velocity >= ALERT_THRESHOLDS.currentVelocity.danger) {
     bump('danger');
-    messages.push(`Current ${marine.ocean_current_velocity.toFixed(1)} m/s — DANGER`);
+    messages.push(`Current ${marine.ocean_current_velocity?.toFixed(1)} m/s — DANGER`);
   } else if (marine.ocean_current_velocity >= ALERT_THRESHOLDS.currentVelocity.warning) {
     bump('warning');
-    messages.push(`Current ${marine.ocean_current_velocity.toFixed(1)} m/s — WARNING`);
+    messages.push(`Current ${marine.ocean_current_velocity?.toFixed(1)} m/s — WARNING`);
   }
 
   // Weather code
@@ -1022,10 +1022,10 @@ A floating card positioned top-left on the map. Shows 4 key metrics at a glance.
 **Props:** `{ marine, forecast, loading, error }`
 
 Display (when data available):
-- Wave: `{marine.current.wave_height.toFixed(1)}m`
+- Wave: `{marine.current.wave_height?.toFixed(1)}m`
 - Wind: `{Math.round(forecast.current.wind_speed_10m * 0.539957)} kn {degreesToCardinal(forecast.current.wind_direction_10m)}`
-- Swell: `{marine.current.swell_wave_height.toFixed(1)}m`
-- SST: `{marine.current.sea_surface_temperature.toFixed(1)}°C`
+- Swell: `{marine.current.swell_wave_height?.toFixed(1)}m`
+- SST: `{marine.current.sea_surface_temperature?.toFixed(1)}°C`
 
 **Styling:** Dark semi-transparent background (`rgba(0,0,0,0.65)`), white text, positioned `top: 60, left: 12`, `borderRadius: 8`, `padding: 10`.
 

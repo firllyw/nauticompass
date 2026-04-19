@@ -93,7 +93,7 @@ export interface WeatherData {
 }
 
 function getCacheKey(latitude: number, longitude: number): string {
-  return `marine_weather_${latitude.toFixed(2)}_${longitude.toFixed(2)}`;
+  return `marine_weather_${latitude?.toFixed(2)}_${longitude?.toFixed(2)}`;
 }
 
 async function readCache(cacheKey: string): Promise<WeatherData | null> {

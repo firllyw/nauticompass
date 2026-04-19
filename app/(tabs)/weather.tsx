@@ -1,11 +1,11 @@
 // app/(tabs)/weather.tsx
 // Weather Detail Screen
-import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import WeatherPanel from '@/components/WeatherPanel';
 import { COLORS } from '@/constants/colors';
 import { useMarineWeather } from '@/hooks/useMarineWeather';
-import WeatherPanel from '@/components/WeatherPanel';
+import React from 'react';
+import { StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // Default coordinate — centred on Indonesian waters (Makassar area)
 const DEFAULT_LAT = -5.14;
@@ -23,7 +23,7 @@ export default function WeatherScreen() {
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Marine Weather</Text>
         <Text style={styles.headerSub}>
-          {DEFAULT_LAT.toFixed(2)}°S · {DEFAULT_LON.toFixed(2)}°E
+          {DEFAULT_LAT?.toFixed(2)}°S · {DEFAULT_LON?.toFixed(2)}°E
         </Text>
       </View>
       <WeatherPanel
