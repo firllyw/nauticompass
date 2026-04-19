@@ -9,7 +9,7 @@ import {
   Modal,
   ScrollView,
 } from 'react-native';
-import MapView, { UrlTile, Polyline, Marker } from 'react-native-maps';
+import MapView, { PROVIDER_DEFAULT, UrlTile, Polyline, Marker } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useShippingLanes } from '@/hooks/useShippingLanes';
 import { useMarineWeather } from '@/hooks/useMarineWeather';
@@ -95,8 +95,8 @@ export default function MapScreen() {
         <MapView
           ref={mapRef}
           style={StyleSheet.absoluteFillObject}
-          provider={undefined}  // undefined = no Google Maps; uses platform default blank canvas
-          mapType="none"        // blank canvas — UrlTile becomes the only basemap
+          provider={PROVIDER_DEFAULT}   // no Google Maps — OSM UrlTile is the only basemap
+          mapType="none"                // blank canvas, our UrlTile fills it
           initialRegion={INITIAL_REGION}
           onRegionChangeComplete={handleRegionChange}
           showsUserLocation={false}

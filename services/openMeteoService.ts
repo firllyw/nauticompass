@@ -24,7 +24,7 @@ const MARINE_HOURLY_VARS = [
   'swell_wave_height',
   'swell_wave_period',
   'wind_wave_height',
-  'sea_level_height',
+  // sea_level_height removed — no longer available in Open-Meteo marine forecast endpoint
   'ocean_current_velocity',
   'ocean_current_direction',
 ].join(',');
@@ -58,7 +58,7 @@ export interface MarineHourlyData {
   swell_wave_height: number[];
   swell_wave_period: number[];
   wind_wave_height: number[];
-  sea_level_height: number[];
+  // sea_level_height omitted — removed from Open-Meteo marine API
   ocean_current_velocity: number[];
   ocean_current_direction: number[];
 }

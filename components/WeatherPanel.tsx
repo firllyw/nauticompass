@@ -48,7 +48,7 @@ export default function WeatherPanel({ data, loading, error, lastUpdated, fromCa
   const timeIndex = marine.hourly.time.findIndex((t) => new Date(t) > now);
   if (timeIndex > 0) currentIndex = timeIndex - 1;
 
-  const currentSeaLevel = marine.hourly.sea_level_height?.[currentIndex];
+  // sea_level_height no longer available from Open-Meteo marine endpoint
   const currentCurrentVel = marine.hourly.ocean_current_velocity?.[currentIndex];
 
   // Alert evaluation
@@ -121,14 +121,13 @@ export default function WeatherPanel({ data, loading, error, lastUpdated, fromCa
         </View>
       </View>
 
-      {/* Sea Level (Tidal Model) */}
+      {/* Sea Level — data no longer provided by Open-Meteo marine endpoint */}
       <View style={styles.card}>
         <Text style={styles.cardTitle}>Sea Level (Model)</Text>
-        <Text style={styles.metricBig}>
-          {currentSeaLevel != null ? `${currentSeaLevel.toFixed(2)} m` : '—'}
-        </Text>
+        <Text style={styles.metricBig}>—</Text>
         <Text style={styles.disclaimer}>
-          ⚠ Model-based tidal estimate. Not suitable for port entry decisions. Verify with nautical almanac.
+          ℹ Tidal model data (sea_level_height) has been removed from the
+          Open-Meteo marine forecast endpoint. Verify tides with a nautical almanac.
         </Text>
       </View>
 

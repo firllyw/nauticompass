@@ -36,7 +36,7 @@ let loadError: string | null = null;
 
 try {
   // eslint-disable-next-line @typescript-eslint/no-var-requires
-  RAW_DATA = require('../assets/data/shipping_lanes.geojson') as GeoJSONCollection;
+  RAW_DATA = require('../assets/data/shipping_lanes.json') as GeoJSONCollection;
 } catch (e) {
   loadError = 'Shipping lanes data not loaded. Place shipping_lanes.geojson in assets/data/';
 }
