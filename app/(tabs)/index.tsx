@@ -1,6 +1,7 @@
 // app/(tabs)/index.tsx
-// Map Screen — main chart with OSM + OpenSeaMap + shipping lanes + port markers
-import React, { useState, useRef, useCallback, useMemo } from 'react';
+// Map Screen — Leaflet.js via react-native-webview
+// No Google Maps API key required. Pure OSM + OpenSeaMap.
+import React, { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import {
   StyleSheet,
   View,
@@ -8,51 +9,186 @@ import {
   TouchableOpacity,
   Modal,
   ScrollView,
+  ActivityIndicator,
 } from 'react-native';
-import MapView, { PROVIDER_DEFAULT, UrlTile, Polyline, Marker } from 'react-native-maps';
+import WebView, { WebViewMessageEvent } from 'react-native-webview';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useShippingLanes } from '@/hooks/useShippingLanes';
 import { useMarineWeather } from '@/hooks/useMarineWeather';
 import { evaluateAlerts } from '@/utils/weatherUtils';
-import { PORTS } from '@/constants/ports';
-import { Port } from '@/constants/ports';
+import { PORTS, Port } from '@/constants/ports';
 import { COLORS } from '@/constants/colors';
 import { useRoute } from '@/context/RouteContext';
 import WeatherOverlay from '@/components/WeatherOverlay';
 import AlertBanner from '@/components/AlertBanner';
 import RouteCard from '@/components/RouteCard';
 
-// Initial map region — centred on Indonesian archipelago
-const INITIAL_REGION = {
-  latitude: -2.5,
-  longitude: 118.0,
-  latitudeDelta: 20,
-  longitudeDelta: 20,
-};
+// ─── Map defaults ────────────────────────────────────────────────────────────
+const INITIAL_LAT = -2.5;
+const INITIAL_LON = 118.0;
+const INITIAL_ZOOM = 5;
 
+// ─── Leaflet HTML (CDN-loaded, injected as inline HTML) ──────────────────────
+// All coordination with React Native happens via window.ReactNativeWebView.postMessage
+// and WebView.injectJavaScript, using a small typed message protocol.
+const LEAFLET_HTML = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="anonymous"/>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin="anonymous"></script>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    html,body{width:100%;height:100%;background:#0A1628;overflow:hidden}
+    #map{width:100vw;height:100vh}
+    /* Dark theme for Leaflet controls */
+    .leaflet-container{background:#0D1F3C}
+    .leaflet-control-attribution{display:none}
+    .leaflet-bar a,.leaflet-bar a:hover{
+      background:#0D1F3C;color:#4FC3F7;
+      border-bottom-color:#1A3A5C
+    }
+    .leaflet-bar a:hover{background:#1A3A5C}
+    .leaflet-control-zoom-in,.leaflet-control-zoom-out{color:#4FC3F7!important}
+    /* Port ID labels */
+    .port-label{
+      background:transparent!important;border:none!important;
+      box-shadow:none!important;color:#FF9800;font-size:10px;
+      font-weight:700;padding:0!important;white-space:nowrap;
+      text-shadow:0 1px 3px rgba(0,0,0,0.9)
+    }
+    .leaflet-tooltip.port-label::before{display:none!important}
+    /* Scale control dark */
+    .leaflet-control-scale-line{
+      background:rgba(10,22,40,0.75);color:#4FC3F7;
+      border-color:#1A3A5C;font-size:10px
+    }
+  </style>
+</head>
+<body>
+<div id="map"></div>
+<script>
+(function(){
+  var map=L.map('map',{
+    center:[${INITIAL_LAT},${INITIAL_LON}],
+    zoom:${INITIAL_ZOOM},
+    zoomControl:true,
+    attributionControl:false
+  });
+
+  /* ── Tile layers ─────────────────────────────────────────── */
+  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{
+    maxZoom:18,minZoom:1
+  }).addTo(map);
+
+  L.tileLayer('https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png',{
+    maxZoom:18,minZoom:7,opacity:0.85
+  }).addTo(map);
+
+  L.control.scale({imperial:false,metric:true,position:'bottomright'}).addTo(map);
+
+  /* ── Layer groups ────────────────────────────────────────── */
+  var majorGroup=L.layerGroup().addTo(map);
+  var middleGroup=L.layerGroup();   // added at zoom>=5
+  var minorGroup=L.layerGroup();    // added at zoom>=7
+  var portsGroup=L.layerGroup().addTo(map);
+  var routeLayer=null;
+
+  /* ── Region reporting + zoom-based lane visibility ──────── */
+  function onMapChange(){
+    var z=map.getZoom();
+    if(z>=7){
+      if(!map.hasLayer(minorGroup))map.addLayer(minorGroup);
+      if(!map.hasLayer(middleGroup))map.addLayer(middleGroup);
+    }else if(z>=5){
+      map.removeLayer(minorGroup);
+      if(!map.hasLayer(middleGroup))map.addLayer(middleGroup);
+    }else{
+      map.removeLayer(minorGroup);
+      map.removeLayer(middleGroup);
+    }
+    var c=map.getCenter();
+    postRN({type:'regionChange',latitude:c.lat,longitude:c.lng,zoom:z});
+  }
+  map.on('moveend',onMapChange);
+  map.on('zoomend',onMapChange);
+
+  function postRN(obj){
+    window.ReactNativeWebView&&window.ReactNativeWebView.postMessage(JSON.stringify(obj));
+  }
+
+  /* ── Public API (called via injectJavaScript) ────────────── */
+
+  // Add a batch (array of coordinate arrays) to major lane layer
+  window.rnAddMajor=function(batch){
+    batch.forEach(function(c){
+      L.polyline(c,{color:'#4FC3F7',weight:2.5,opacity:0.85,interactive:false}).addTo(majorGroup);
+    });
+  };
+  // Add a batch to middle lane layer
+  window.rnAddMiddle=function(batch){
+    batch.forEach(function(c){
+      L.polyline(c,{color:'#0288D1',weight:1.5,opacity:0.75,interactive:false}).addTo(middleGroup);
+    });
+  };
+  // Set all port markers
+  window.rnSetPorts=function(ports){
+    portsGroup.clearLayers();
+    ports.forEach(function(p){
+      var m=L.circleMarker([p.lat,p.lon],{
+        radius:7,fillColor:'#FF6F00',color:'#fff',
+        weight:2,fillOpacity:1,zIndexOffset:1000
+      });
+      m.bindTooltip(p.id,{
+        permanent:true,direction:'right',
+        className:'port-label',offset:[9,0]
+      });
+      m.on('click',function(){postRN({type:'portTap',portId:p.id});});
+      m.addTo(portsGroup);
+    });
+  };
+  // Animate map to coordinate
+  window.rnFlyTo=function(lat,lon,zoom){
+    map.flyTo([lat,lon],zoom||10,{duration:0.8});
+  };
+  // Draw dashed route line between two ports (null clears it)
+  window.rnSetRoute=function(oLat,oLon,dLat,dLon){
+    if(routeLayer){map.removeLayer(routeLayer);routeLayer=null;}
+    if(oLat==null||dLat==null)return;
+    routeLayer=L.polyline([[oLat,oLon],[dLat,dLon]],{
+      color:'#00E676',weight:3,dashArray:'10 8',opacity:0.9
+    }).addTo(map);
+  };
+
+  // Signal React Native the map DOM is ready and Leaflet is loaded
+  setTimeout(function(){postRN({type:'mapReady'});},400);
+})();
+</script>
+</body>
+</html>`;
+
+// ─── Component ────────────────────────────────────────────────────────────────
 export default function MapScreen() {
   const insets = useSafeAreaInsets();
   const { origin, destination, vesselSpeed } = useRoute();
-  const mapRef = useRef<MapView>(null);
+  const webViewRef = useRef<WebView>(null);
 
-  // Map state
+  const [isMapReady, setIsMapReady] = useState(false);
   const [weatherCoord, setWeatherCoord] = useState({
-    latitude: INITIAL_REGION.latitude,
-    longitude: INITIAL_REGION.longitude,
+    latitude: INITIAL_LAT,
+    longitude: INITIAL_LON,
   });
-  const [showMiddleLanes, setShowMiddleLanes] = useState(false);
-  const [showMinorLanes, setShowMinorLanes] = useState(false);
   const [selectedPort, setSelectedPort] = useState<Port | null>(null);
   const [showAttribution, setShowAttribution] = useState(false);
 
-  // Data hooks
+  // ── Data hooks ────────────────────────────────────────────────────────────
   const lanes = useShippingLanes();
   const { data, loading, error, lastUpdated, fromCache } = useMarineWeather(
     weatherCoord.latitude,
     weatherCoord.longitude
   );
 
-  // Alert evaluation — memoised to avoid recalculating on every render
   const { level: alertLevel, messages: alertMessages } = useMemo(() => {
     if (!data?.marine?.current || !data?.forecast?.current) {
       return { level: 'none' as const, messages: [] };
@@ -63,111 +199,140 @@ export default function MapScreen() {
     );
   }, [data]);
 
-  const handleRegionChange = useCallback((region: { latitude: number; longitude: number; latitudeDelta: number }) => {
-    setWeatherCoord({ latitude: region.latitude, longitude: region.longitude });
-    const delta = region.latitudeDelta;
-    setShowMiddleLanes(delta < 10);
-    setShowMinorLanes(delta < 3);
-  }, []);
+  // ── Pre-compute Leaflet-format lane coordinates (memoised) ────────────────
+  // Decimate long lane arrays: keep max N points per lane to limit JSON size.
+  const majorForLeaflet = useMemo(
+    () =>
+      lanes.major.map((lane) => {
+        const step = Math.max(1, Math.floor(lane.coordinates.length / 300));
+        return lane.coordinates
+          .filter((_, i) => i % step === 0)
+          .map((c) => [c.latitude, c.longitude] as [number, number]);
+      }),
+    [lanes.major]
+  );
 
-  const handlePortPress = useCallback((port: Port) => {
-    setSelectedPort(port);
+  const middleForLeaflet = useMemo(
+    () =>
+      lanes.middle.map((lane) => {
+        const step = Math.max(1, Math.floor(lane.coordinates.length / 150));
+        return lane.coordinates
+          .filter((_, i) => i % step === 0)
+          .map((c) => [c.latitude, c.longitude] as [number, number]);
+      }),
+    [lanes.middle]
+  );
+
+  // ── Inject ports + lanes once the Leaflet map signals ready ───────────────
+  useEffect(() => {
+    if (!isMapReady || !webViewRef.current) return;
+
+    const wv = webViewRef.current;
+
+    // 1. Ports
+    const portPayload = PORTS.map((p) => ({
+      id: p.id,
+      lat: p.latitude,
+      lon: p.longitude,
+    }));
+    wv.injectJavaScript(`window.rnSetPorts(${JSON.stringify(portPayload)}); true;`);
+
+    // 2. Major lanes — inject in chunks of 15 to avoid blocking the JS thread
+    const CHUNK = 15;
+    let delay = 100;
+    for (let i = 0; i < majorForLeaflet.length; i += CHUNK) {
+      const chunk = majorForLeaflet.slice(i, i + CHUNK);
+      const d = delay;
+      setTimeout(
+        () => wv.injectJavaScript(`window.rnAddMajor(${JSON.stringify(chunk)}); true;`),
+        d
+      );
+      delay += 120;
+    }
+
+    // 3. Middle lanes — after major lanes finish
+    for (let i = 0; i < middleForLeaflet.length; i += CHUNK) {
+      const chunk = middleForLeaflet.slice(i, i + CHUNK);
+      const d = delay;
+      setTimeout(
+        () => wv.injectJavaScript(`window.rnAddMiddle(${JSON.stringify(chunk)}); true;`),
+        d
+      );
+      delay += 100;
+    }
+  }, [isMapReady, majorForLeaflet, middleForLeaflet]);
+
+  // ── Update route line when origin/destination changes ─────────────────────
+  useEffect(() => {
+    if (!isMapReady || !webViewRef.current) return;
+    const oLat = origin?.latitude ?? null;
+    const oLon = origin?.longitude ?? null;
+    const dLat = destination?.latitude ?? null;
+    const dLon = destination?.longitude ?? null;
+    webViewRef.current.injectJavaScript(
+      `window.rnSetRoute(${oLat},${oLon},${dLat},${dLon}); true;`
+    );
+  }, [isMapReady, origin, destination]);
+
+  // ── Handle messages from Leaflet → React Native ───────────────────────────
+  const handleMessage = useCallback((event: WebViewMessageEvent) => {
+    try {
+      const msg = JSON.parse(event.nativeEvent.data) as {
+        type: string;
+        latitude?: number;
+        longitude?: number;
+        zoom?: number;
+        portId?: string;
+      };
+      switch (msg.type) {
+        case 'mapReady':
+          setIsMapReady(true);
+          break;
+        case 'regionChange':
+          if (msg.latitude != null && msg.longitude != null) {
+            setWeatherCoord({ latitude: msg.latitude, longitude: msg.longitude });
+          }
+          break;
+        case 'portTap':
+          if (msg.portId) {
+            const port = PORTS.find((p) => p.id === msg.portId) ?? null;
+            setSelectedPort(port);
+          }
+          break;
+      }
+    } catch {
+      // Ignore malformed messages
+    }
   }, []);
 
   const flyToPort = useCallback((port: Port) => {
-    mapRef.current?.animateToRegion(
-      { latitude: port.latitude, longitude: port.longitude, latitudeDelta: 1.5, longitudeDelta: 1.5 },
-      600
+    webViewRef.current?.injectJavaScript(
+      `window.rnFlyTo(${port.latitude},${port.longitude},10); true;`
     );
   }, []);
 
-  // Memoised lane arrays
-  const majorLanes = useMemo(() => lanes.major, [lanes.major]);
-  const middleLanes = useMemo(() => lanes.middle, [lanes.middle]);
-  const minorLanes = useMemo(() => lanes.minor, [lanes.minor]);
-
+  // ─────────────────────────────────────────────────────────────────────────
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
       {/* Alert banner */}
       <AlertBanner level={alertLevel} messages={alertMessages} />
 
+      {/* Map area */}
       <View style={styles.mapWrapper}>
-        <MapView
-          ref={mapRef}
-          style={StyleSheet.absoluteFillObject}
-          provider={PROVIDER_DEFAULT}   // no Google Maps — OSM UrlTile is the only basemap
-          mapType="none"                // blank canvas, our UrlTile fills it
-          initialRegion={INITIAL_REGION}
-          onRegionChangeComplete={handleRegionChange}
-          showsUserLocation={false}
-          showsMyLocationButton={false}
-          showsCompass
-          rotateEnabled={false}
-        >
-          {/* Layer 1: OSM base map */}
-          <UrlTile
-            urlTemplate="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
-            maximumZ={18}
-            minimumZ={1}
-            tileSize={256}
-          />
+        <WebView
+          ref={webViewRef}
+          source={{ html: LEAFLET_HTML, baseUrl: 'https://tile.openstreetmap.org' }}
+          style={styles.webview}
+          javaScriptEnabled
+          domStorageEnabled
+          originWhitelist={['*']}
+          onMessage={handleMessage}
+          scalesPageToFit={false}
+          bounces={false}
+          scrollEnabled={false}
+        />
 
-          {/* Layer 2: OpenSeaMap seamark overlay (renders on top due to order) */}
-          <UrlTile
-            urlTemplate="https://tiles.openseamap.org/seamark/{z}/{x}/{y}.png"
-            maximumZ={18}
-            minimumZ={7}
-            tileSize={256}
-            zIndex={1}
-            opacity={0.85}
-          />
-
-          {/* Always render Major shipping lanes */}
-          {majorLanes.map((lane) => (
-            <Polyline
-              key={lane.id}
-              coordinates={lane.coordinates}
-              strokeColor={COLORS.laneColorMajor}
-              strokeWidth={2.5}
-            />
-          ))}
-
-          {/* Middle lanes at latDelta < 10 */}
-          {showMiddleLanes &&
-            middleLanes.map((lane) => (
-              <Polyline
-                key={lane.id}
-                coordinates={lane.coordinates}
-                strokeColor={COLORS.laneColorMiddle}
-                strokeWidth={1.5}
-              />
-            ))}
-
-          {/* Minor lanes at latDelta < 3 */}
-          {showMinorLanes &&
-            minorLanes.map((lane) => (
-              <Polyline
-                key={lane.id}
-                coordinates={lane.coordinates}
-                strokeColor={COLORS.laneColorMinor}
-                strokeWidth={1}
-              />
-            ))}
-
-          {/* Port markers */}
-          {PORTS.map((port) => (
-            <Marker
-              key={port.id}
-              coordinate={{ latitude: port.latitude, longitude: port.longitude }}
-              title={port.name}
-              description={port.unlocode}
-              pinColor={COLORS.portMarker}
-              onPress={() => handlePortPress(port)}
-            />
-          ))}
-        </MapView>
-
-        {/* Floating weather card */}
+        {/* Floating weather overlay */}
         <WeatherOverlay
           marine={data?.marine ?? null}
           forecast={data?.forecast ?? null}
@@ -177,7 +342,7 @@ export default function MapScreen() {
           fromCache={fromCache}
         />
 
-        {/* Attribution ⓘ button */}
+        {/* Attribution button */}
         <TouchableOpacity
           style={styles.attributionBtn}
           onPress={() => setShowAttribution(true)}
@@ -185,20 +350,29 @@ export default function MapScreen() {
           <Text style={styles.attributionBtnText}>ⓘ</Text>
         </TouchableOpacity>
 
-        {/* GeoJSON load error */}
-        {lanes.error && (
+        {/* Shipping lanes load error */}
+        {!!lanes.error && (
           <View style={styles.laneError}>
             <Text style={styles.laneErrorText}>{lanes.error}</Text>
           </View>
         )}
+
+        {/* Loading overlay — shown until Leaflet sends 'mapReady' */}
+        {!isMapReady && (
+          <View style={styles.loadingOverlay}>
+            <ActivityIndicator size="large" color={COLORS.accent} />
+            <Text style={styles.loadingText}>Loading nautical chart…</Text>
+            <Text style={styles.loadingSubText}>OpenStreetMap · OpenSeaMap</Text>
+          </View>
+        )}
       </View>
 
-      {/* Route card at bottom */}
-      <View style={[styles.routeCardWrapper, { paddingBottom: insets.bottom > 0 ? insets.bottom : 8 }]}>
+      {/* Route summary card */}
+      <View style={[styles.routeCardWrapper, { paddingBottom: Math.max(insets.bottom, 8) }]}>
         <RouteCard origin={origin} destination={destination} vesselSpeed={vesselSpeed} />
       </View>
 
-      {/* Port detail bottom sheet modal */}
+      {/* ── Port detail bottom sheet ────────────────────────────────────── */}
       <Modal
         visible={!!selectedPort}
         transparent
@@ -209,17 +383,19 @@ export default function MapScreen() {
           <View style={[styles.portModal, { paddingBottom: Math.max(insets.bottom, 24) }]}>
             {selectedPort && (
               <>
-                <View style={styles.portModalHeader}>
+                <View style={styles.modalHeader}>
                   <Text style={styles.portModalId}>{selectedPort.id}</Text>
                   <TouchableOpacity
-                    style={styles.portModalClose}
+                    style={styles.closeBtn}
                     onPress={() => setSelectedPort(null)}
                   >
-                    <Text style={styles.portModalCloseText}>✕</Text>
+                    <Text style={styles.closeBtnText}>✕</Text>
                   </TouchableOpacity>
                 </View>
                 <Text style={styles.portModalName}>{selectedPort.name}</Text>
-                <Text style={styles.portModalMeta}>{selectedPort.country} · {selectedPort.unlocode}</Text>
+                <Text style={styles.portModalMeta}>
+                  {selectedPort.country} · {selectedPort.unlocode}
+                </Text>
                 <Text style={styles.portModalCoords}>
                   {selectedPort.latitude.toFixed(4)}°, {selectedPort.longitude.toFixed(4)}°
                 </Text>
@@ -239,7 +415,7 @@ export default function MapScreen() {
         </View>
       </Modal>
 
-      {/* Attribution modal */}
+      {/* ── Attribution modal ───────────────────────────────────────────── */}
       <Modal
         visible={showAttribution}
         transparent
@@ -248,19 +424,23 @@ export default function MapScreen() {
       >
         <View style={styles.modalBackdrop}>
           <View style={[styles.attributionModal, { paddingBottom: Math.max(insets.bottom, 24) }]}>
-            <View style={styles.portModalHeader}>
-              <Text style={styles.portModalName}>Data Attribution</Text>
+            <View style={styles.modalHeader}>
+              <Text style={styles.attrTitle}>Data Attribution</Text>
               <TouchableOpacity onPress={() => setShowAttribution(false)}>
-                <Text style={styles.portModalCloseText}>✕</Text>
+                <Text style={styles.closeBtnText}>✕</Text>
               </TouchableOpacity>
             </View>
             <ScrollView>
               <Text style={styles.attrLine}>📍 Map data: © OpenStreetMap contributors (ODbL)</Text>
               <Text style={styles.attrLine}>⚓ Nautical marks: © OpenSeaMap contributors (ODbL)</Text>
-              <Text style={styles.attrLine}>🚢 Shipping lanes: CIA World Oceans Map (2012), via Benden (2022), CC BY 4.0</Text>
-              <Text style={styles.attrLine}>🌊 Marine weather: Open-Meteo (CC BY 4.0), MeteoFrance, ECMWF, NOAA GFS</Text>
+              <Text style={styles.attrLine}>
+                🚢 Shipping lanes: CIA World Oceans Map (2012), via Benden (2022), CC BY 4.0
+              </Text>
+              <Text style={styles.attrLine}>
+                🌊 Marine weather: Open-Meteo (CC BY 4.0), MeteoFrance, ECMWF, NOAA GFS
+              </Text>
               <Text style={[styles.attrLine, { color: COLORS.warning }]}>
-                ⚠ Tidal data: Open-Meteo model estimate — not for navigation decisions
+                ⚠ Tidal data: Removed from Open-Meteo marine endpoint — verify with nautical almanac
               </Text>
             </ScrollView>
           </View>
@@ -270,40 +450,74 @@ export default function MapScreen() {
   );
 }
 
+// ─── Styles ──────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.bgPrimary },
-  mapWrapper: { flex: 1 },
+  mapWrapper: { flex: 1, overflow: 'hidden' },
+  webview: { flex: 1, backgroundColor: COLORS.bgPrimary },
   routeCardWrapper: {
     backgroundColor: COLORS.bgSecondary,
     paddingTop: 4,
     borderTopWidth: 1,
     borderTopColor: 'rgba(79, 195, 247, 0.2)',
   },
+  // Loading overlay
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: COLORS.bgPrimary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 20,
+  },
+  loadingText: {
+    color: COLORS.accent,
+    fontSize: 16,
+    fontWeight: '600',
+    marginTop: 16,
+  },
+  loadingSubText: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
+    marginTop: 6,
+  },
+  // Attribution ⓘ button
   attributionBtn: {
     position: 'absolute',
-    bottom: 12,
+    bottom: 44,
     right: 12,
     width: 30,
     height: 30,
     borderRadius: 15,
-    backgroundColor: 'rgba(10, 22, 40, 0.85)',
+    backgroundColor: 'rgba(10, 22, 40, 0.88)',
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: 'rgba(79, 195, 247, 0.4)',
+    zIndex: 10,
   },
-  attributionBtnText: { color: COLORS.accent, fontSize: 15, fontWeight: '700' },
+  attributionBtnText: {
+    color: COLORS.accent,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  // Lane error banner
   laneError: {
     position: 'absolute',
-    bottom: 50,
+    bottom: 80,
     left: 12,
     right: 12,
-    backgroundColor: 'rgba(183, 28, 28, 0.9)',
+    backgroundColor: 'rgba(183, 28, 28, 0.92)',
     borderRadius: 8,
     padding: 10,
+    zIndex: 10,
   },
-  laneErrorText: { color: '#FFFFFF', fontSize: 12, textAlign: 'center' },
-  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  laneErrorText: { color: '#FFF', fontSize: 12, textAlign: 'center' },
+  // Modals
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    justifyContent: 'flex-end',
+  },
   portModal: {
     backgroundColor: COLORS.bgSecondary,
     borderTopLeftRadius: 20,
@@ -312,25 +526,43 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: 'rgba(79, 195, 247, 0.3)',
   },
-  portModalHeader: {
+  modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 12,
   },
   portModalId: { color: COLORS.accent, fontSize: 28, fontWeight: '800' },
-  portModalClose: {
-    width: 32, height: 32, borderRadius: 16,
+  closeBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: COLORS.bgTertiary,
-    alignItems: 'center', justifyContent: 'center',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  portModalCloseText: { color: COLORS.textSecondary, fontSize: 14, fontWeight: '600' },
-  portModalName: { color: COLORS.textPrimary, fontSize: 18, fontWeight: '700', marginBottom: 6 },
+  closeBtnText: { color: COLORS.textSecondary, fontSize: 14, fontWeight: '600' },
+  portModalName: {
+    color: COLORS.textPrimary,
+    fontSize: 18,
+    fontWeight: '700',
+    marginBottom: 6,
+  },
   portModalMeta: { color: COLORS.textSecondary, fontSize: 14, marginBottom: 4 },
   portModalCoords: { color: COLORS.textSecondary, fontSize: 13, marginBottom: 4 },
   portModalTz: { color: COLORS.textSecondary, fontSize: 12, marginBottom: 20 },
-  flyBtn: { backgroundColor: COLORS.accent, borderRadius: 10, paddingVertical: 14, alignItems: 'center' },
-  flyBtnText: { color: '#0A1628', fontSize: 15, fontWeight: '800', letterSpacing: 0.3 },
+  flyBtn: {
+    backgroundColor: COLORS.accent,
+    borderRadius: 10,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  flyBtnText: {
+    color: '#0A1628',
+    fontSize: 15,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
   attributionModal: {
     backgroundColor: COLORS.bgSecondary,
     borderTopLeftRadius: 20,
@@ -340,5 +572,6 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: 'rgba(79, 195, 247, 0.3)',
   },
+  attrTitle: { color: COLORS.textPrimary, fontSize: 18, fontWeight: '700' },
   attrLine: { color: COLORS.textPrimary, fontSize: 13, lineHeight: 22, marginBottom: 6 },
 });
