@@ -100,4 +100,30 @@ export const PORTS: Port[] = [
     longitude: 128.1800,
     timezone: 'Asia/Jayapura',
   },
+  { id: 'SHA', name: 'Shanghai', country: 'China', unlocode: 'CN SHA', latitude: 31.2304, longitude: 121.4737, timezone: 'Asia/Shanghai' },
+  { id: 'NGB', name: 'Ningbo-Zhoushan', country: 'China', unlocode: 'CN NGB', latitude: 29.8683, longitude: 121.5440, timezone: 'Asia/Shanghai' },
+  { id: 'SZX', name: 'Shenzhen', country: 'China', unlocode: 'CN SZX', latitude: 22.5431, longitude: 114.0579, timezone: 'Asia/Shanghai' },
+  { id: 'BUS', name: 'Busan', country: 'South Korea', unlocode: 'KR BUS', latitude: 35.1796, longitude: 129.0756, timezone: 'Asia/Seoul' },
+  { id: 'HKG', name: 'Hong Kong', country: 'China', unlocode: 'HK HKG', latitude: 22.3193, longitude: 114.1694, timezone: 'Asia/Hong_Kong' },
+  { id: 'DXB', name: 'Jebel Ali (Dubai)', country: 'UAE', unlocode: 'AE JEA', latitude: 25.0113, longitude: 55.0612, timezone: 'Asia/Dubai' },
+  { id: 'PKL', name: 'Port Klang', country: 'Malaysia', unlocode: 'MY PKL', latitude: 3.0000, longitude: 101.4000, timezone: 'Asia/Kuala_Lumpur' },
+  { id: 'TNJ', name: 'Tanjung Pelepas', country: 'Malaysia', unlocode: 'MY TPP', latitude: 1.3700, longitude: 103.5500, timezone: 'Asia/Kuala_Lumpur' },
+  { id: 'KAO', name: 'Kaohsiung', country: 'Taiwan', unlocode: 'TW KHH', latitude: 22.6273, longitude: 120.3014, timezone: 'Asia/Taipei' },
+
+  // --- Europe ---
+  { id: 'RTM', name: 'Rotterdam', country: 'Netherlands', unlocode: 'NL RTM', latitude: 51.9225, longitude: 4.4792, timezone: 'Europe/Amsterdam' },
+  { id: 'ANR', name: 'Antwerp', country: 'Belgium', unlocode: 'BE ANR', latitude: 51.2194, longitude: 4.4025, timezone: 'Europe/Brussels' },
+  { id: 'HAM', name: 'Hamburg', country: 'Germany', unlocode: 'DE HAM', latitude: 53.5511, longitude: 9.9937, timezone: 'Europe/Berlin' },
+  { id: 'VLC', name: 'Valencia', country: 'Spain', unlocode: 'ES VLC', latitude: 39.4699, longitude: -0.3763, timezone: 'Europe/Madrid' },
+
+  // --- Americas ---
+  { id: 'LAX', name: 'Los Angeles', country: 'USA', unlocode: 'US LAX', latitude: 33.7701, longitude: -118.2437, timezone: 'America/Los_Angeles' },
+  { id: 'LGB', name: 'Long Beach', country: 'USA', unlocode: 'US LGB', latitude: 33.7701, longitude: -118.1937, timezone: 'America/Los_Angeles' },
+  { id: 'NYC', name: 'New York/New Jersey', country: 'USA', unlocode: 'US NYC', latitude: 40.7128, longitude: -74.0060, timezone: 'America/New_York' },
+  { id: 'SAV', name: 'Savannah', country: 'USA', unlocode: 'US SAV', latitude: 32.0809, longitude: -81.0912, timezone: 'America/New_York' },
+  { id: 'SSZ', name: 'Santos', country: 'Brazil', unlocode: 'BR SSZ', latitude: -23.9608, longitude: -46.3339, timezone: 'America/Sao_Paulo' },
+
+  // --- Others ---
+  { id: 'TNG', name: 'Tanger Med', country: 'Morocco', unlocode: 'MA TNG', latitude: 35.8894, longitude: -5.5000, timezone: 'Africa/Casablanca' },
+  { id: 'MEL', name: 'Melbourne', country: 'Australia', unlocode: 'AU MEL', latitude: -37.8136, longitude: 144.9631, timezone: 'Australia/Melbourne' },
 ];

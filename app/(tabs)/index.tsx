@@ -1,7 +1,6 @@
 // app/(tabs)/index.tsx
 // Map Screen — Leaflet.js via react-native-webview
 // No Google Maps API key required. Pure OSM + OpenSeaMap.
-// Route computation uses searoute-js (MARNET/Dijkstra) inside React Native's Hermes engine.
 import AlertBanner from '@/components/AlertBanner';
 import RouteCard from '@/components/RouteCard';
 import WeatherOverlay from '@/components/WeatherOverlay';
@@ -23,16 +22,6 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import WebView, { WebViewMessageEvent } from 'react-native-webview';
-// searoute-js: runs in Hermes (CommonJS), avoids land masses using MARNET graph
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const searoute = require('searoute-js') as (
-  origin: [number, number],
-  destination: [number, number],
-  units?: string
-) => {
-  geometry: { coordinates: [number, number][] };
-  properties: { length: number; units: string };
-} | null;
 
 // ─── Map defaults ────────────────────────────────────────────────────────────
 const INITIAL_LAT = -2.5;
@@ -163,20 +152,13 @@ const LEAFLET_HTML = `<!DOCTYPE html>
   window.rnFlyTo=function(lat,lon,zoom){
     map.flyTo([lat,lon],zoom||10,{duration:0.8});
   };
-  // Draw a maritime route from pre-computed coordinates [[lat,lon],...]
-  // Called by React Native after searoute-js computes the path in Hermes
-  window.rnDrawRoute=function(coords,isMaritme){
+  // Draw dashed route line between two ports (null clears it)
+  window.rnSetRoute=function(oLat,oLon,dLat,dLon){
     if(routeLayer){map.removeLayer(routeLayer);routeLayer=null;}
-    if(!coords||coords.length<2)return;
-    routeLayer=L.polyline(coords,{
-      color: isMaritme ? '#00E676' : '#FFB74D',
-      weight:3,dashArray:'10 8',opacity:0.9,lineJoin:'round'
+    if(oLat==null||dLat==null)return;
+    routeLayer=L.polyline([[oLat,oLon],[dLat,dLon]],{
+      color:'#00E676',weight:3,dashArray:'10 8',opacity:0.9
     }).addTo(map);
-    map.fitBounds(routeLayer.getBounds(),{padding:[50,50],maxZoom:8});
-  };
-  // Clear route
-  window.rnClearRoute=function(){
-    if(routeLayer){map.removeLayer(routeLayer);routeLayer=null;}
   };
 
   // Signal React Native the map DOM is ready and Leaflet is loaded
@@ -193,7 +175,6 @@ export default function MapScreen() {
   const webViewRef = useRef<WebView>(null);
 
   const [isMapReady, setIsMapReady] = useState(false);
-  const [searouteDistanceKm, setSearouteDistanceKm] = useState<number | null>(null);
   const [weatherCoord, setWeatherCoord] = useState({
     latitude: INITIAL_LAT,
     longitude: INITIAL_LON,
@@ -281,47 +262,16 @@ export default function MapScreen() {
     }
   }, [isMapReady, majorForLeaflet, middleForLeaflet]);
 
-  // ── Compute maritime route in Hermes, inject coordinates into Leaflet ────────
+  // ── Update route line when origin/destination changes ─────────────────────
   useEffect(() => {
-    const wv = webViewRef.current;
-    if (!isMapReady || !wv) return;
-
-    setSearouteDistanceKm(null);
-
-    // No route selected — clear any existing line
-    if (!origin || !destination) {
-      wv.injectJavaScript('window.rnClearRoute(); true;');
-      return;
-    }
-
-    try {
-      console.log(
-        `[searoute] computing: [${origin.longitude},${origin.latitude}] → [${destination.longitude},${destination.latitude}]`
-      );
-      // searoute expects [lon, lat] — GeoJSON axis order
-      // valid unit strings: 'kilometers', 'miles', 'nauticalmiles', etc. (NOT 'km' or 'nm')
-      const result = searoute(
-        [origin.longitude, origin.latitude],
-        [destination.longitude, destination.latitude],
-        'kilometers'
-      );
-      if (!result || !result.geometry || result.geometry.coordinates.length < 2) {
-        throw new Error('searoute returned empty / null result');
-      }
-      // Convert GeoJSON [lon,lat] → Leaflet [lat,lon]
-      const leafletCoords = result.geometry.coordinates.map(
-        ([lon, lat]: [number, number]) => [lat, lon] as [number, number]
-      );
-      const distKm = Math.round(result.properties?.length ?? 0);
-      if (distKm > 0) setSearouteDistanceKm(distKm);
-      console.log(`[searoute] ✅ ${leafletCoords.length} waypoints, ${distKm} km`);
-      wv.injectJavaScript(
-        `window.rnDrawRoute(${JSON.stringify(leafletCoords)}, true); true;`
-      );
-    } catch (err) {
-      console.error('[searoute] ❌ routing failed:', err);
-      wv.injectJavaScript('window.rnClearRoute(); true;');
-    }
+    if (!isMapReady || !webViewRef.current) return;
+    const oLat = origin?.latitude ?? null;
+    const oLon = origin?.longitude ?? null;
+    const dLat = destination?.latitude ?? null;
+    const dLon = destination?.longitude ?? null;
+    webViewRef.current.injectJavaScript(
+      `window.rnSetRoute(${oLat},${oLon},${dLat},${dLon}); true;`
+    );
   }, [isMapReady, origin, destination]);
 
   // ── Handle messages from Leaflet → React Native ───────────────────────────
@@ -333,7 +283,6 @@ export default function MapScreen() {
         longitude?: number;
         zoom?: number;
         portId?: string;
-        distanceKm?: number;
       };
       switch (msg.type) {
         case 'mapReady':
@@ -349,10 +298,6 @@ export default function MapScreen() {
             const port = PORTS.find((p) => p.id === msg.portId) ?? null;
             setSelectedPort(port);
           }
-          break;
-        case 'routeComputed':
-          // searoute-js reports the actual maritime distance (km) after routing
-          if (msg.distanceKm) setSearouteDistanceKm(msg.distanceKm);
           break;
       }
     } catch {
