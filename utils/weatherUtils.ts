@@ -14,8 +14,8 @@ export interface AlertResult {
  * @param forecast — the `current` block from Open-Meteo forecast response
  */
 export function evaluateAlerts(
-  marine: Record<string, number>,
-  forecast: Record<string, number>
+  marine: any,
+  forecast: any
 ): AlertResult {
   const messages: string[] = [];
   let level: AlertLevel = 'none';

@@ -84,3 +84,48 @@ export interface RNCoordinate {
 export function geojsonCoordsToRNMaps(coordinates: number[][]): RNCoordinate[] {
   return coordinates.map(([lng, lat]) => ({ latitude: lat, longitude: lng }));
 }
+
+/**
+ * Calculates a point at a specific fraction between two points on a Great Circle.
+ */
+export function intermediatePoint(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number,
+  fraction: number
+): RNCoordinate {
+  const toRad = (deg: number) => (deg * Math.PI) / 180;
+  const toDeg = (rad: number) => (rad * 180) / Math.PI;
+
+  const rLat1 = toRad(lat1);
+  const rLon1 = toRad(lon1);
+  const rLat2 = toRad(lat2);
+  const rLon2 = toRad(lon2);
+
+  const d =
+    2 *
+    Math.asin(
+      Math.sqrt(
+        Math.sin((rLat2 - rLat1) / 2) ** 2 +
+          Math.cos(rLat1) * Math.cos(rLat2) * Math.sin((rLon2 - rLon1) / 2) ** 2
+      )
+    );
+
+  if (d === 0) return { latitude: lat1, longitude: lon1 };
+
+  const a = Math.sin((1 - fraction) * d) / Math.sin(d);
+  const b = Math.sin(fraction * d) / Math.sin(d);
+
+  const x = a * Math.cos(rLat1) * Math.cos(rLon1) + b * Math.cos(rLat2) * Math.cos(rLon2);
+  const y = a * Math.cos(rLat1) * Math.sin(rLon1) + b * Math.cos(rLat2) * Math.sin(rLon2);
+  const z = a * Math.sin(rLat1) + b * Math.sin(rLat2);
+
+  const lat = Math.atan2(z, Math.sqrt(x * x + y * y));
+  const lon = Math.atan2(y, x);
+
+  return {
+    latitude: toDeg(lat),
+    longitude: ((toDeg(lon) + 540) % 360) - 180,
+  };
+}

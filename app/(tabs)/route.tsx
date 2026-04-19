@@ -1,11 +1,13 @@
 // app/(tabs)/route.tsx
-// Route Planning Screen
 import { COLORS } from '@/constants/colors';
 import { PORTS, Port } from '@/constants/ports';
 import { useRoute } from '@/context/RouteContext';
-import { bearingDeg, degreesToCardinal, distanceNM, estimateETA, formatETA } from '@/utils/geoUtils';
+import { formatETA } from '@/utils/geoUtils';
+import { evaluateAlerts, weatherCodeLabel } from '@/utils/weatherUtils';
 import React, { useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
   ScrollView,
   StyleSheet,
   Text,
@@ -17,7 +19,19 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function RouteScreen() {
   const insets = useSafeAreaInsets();
-  const { origin, setOrigin, destination, setDestination, vesselSpeed, setVesselSpeed } = useRoute();
+  const {
+    origin, setOrigin,
+    destination, setDestination,
+    vesselSpeed, setVesselSpeed,
+    departureTime,
+    isPreviewLoading,
+    previewWaypoints,
+    generatePreview,
+    saveAndActivateRoute,
+    activeRoute,
+    clearRoute
+  } = useRoute();
+
   const [selectingFor, setSelectingFor] = useState<'origin' | 'destination' | null>(null);
 
   const handlePortSelect = (port: Port) => {
@@ -27,16 +41,6 @@ export default function RouteScreen() {
   };
 
   const hasBoth = origin && destination;
-  const dist = hasBoth
-    ? distanceNM(origin.latitude, origin.longitude, destination.latitude, destination.longitude)
-    : 0;
-  const bearing = hasBoth
-    ? bearingDeg(origin.latitude, origin.longitude, destination.latitude, destination.longitude)
-    : 0;
-  const etaDate = hasBoth ? estimateETA(dist, vesselSpeed) : null;
-  const hoursTotal = hasBoth ? dist / vesselSpeed : 0;
-  const days = Math.floor(hoursTotal / 24);
-  const hours = Math.round(hoursTotal % 24);
 
   // Port selection picker view
   if (selectingFor) {
@@ -63,12 +67,81 @@ export default function RouteScreen() {
               <View style={styles.portInfo}>
                 <Text style={styles.portName}>{port.name}</Text>
                 <Text style={styles.portMeta}>{port.country} · {port.unlocode}</Text>
-                <Text style={styles.portCoords}>
-                  {port.latitude?.toFixed(4)}°, {port.longitude?.toFixed(4)}°
-                </Text>
               </View>
             </TouchableOpacity>
           ))}
+        </ScrollView>
+      </View>
+    );
+  }
+
+  // Preview / Review Screen
+  if (previewWaypoints) {
+    return (
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>Review Forecast</Text>
+          <TouchableOpacity
+            style={styles.cancelBtn}
+            onPress={() => {
+              // Simply clear preview to go back
+              Alert.alert('Discard', 'Discard this route preview?', [
+                { text: 'No' },
+                { text: 'Yes', onPress: () => { /* Logic to clear preview handled in context or via state if we wanted to */ } }
+              ]);
+            }}
+          >
+            <Text style={styles.cancelBtnText}>Back</Text>
+          </TouchableOpacity>
+        </View>
+        <ScrollView style={styles.scroll}>
+          <View style={styles.previewInfo}>
+            <Text style={styles.previewSummaryText}>
+              Route analysis complete. 🚢 {vesselSpeed} kn avg speed.
+            </Text>
+          </View>
+
+          <View style={styles.timeline}>
+            {previewWaypoints.map((wp, idx) => {
+              const evalResult = wp.marine ? evaluateAlerts(wp.marine.current, wp.forecast.current) : null;
+              const etaDate = new Date(departureTime.getTime() + wp.etaHours * 3600 * 1000);
+              
+              return (
+                <View key={idx} style={styles.timelineItem}>
+                  <View style={styles.timeCol}>
+                    <Text style={styles.timeText}>{formatETA(etaDate)}</Text>
+                    <Text style={styles.etaText}>+{Math.round(wp.etaHours)}h</Text>
+                  </View>
+                  <View style={styles.markerCol}>
+                    <View style={[styles.timelineDot, evalResult?.level === 'danger' && { backgroundColor: COLORS.danger }, evalResult?.level === 'warning' && { backgroundColor: COLORS.warning }]} />
+                    {idx < previewWaypoints.length - 1 && <View style={styles.timelineLine} />}
+                  </View>
+                  <View style={styles.weatherCol}>
+                    {wp.marine ? (
+                      <>
+                        <Text style={styles.weatherCondition}>{weatherCodeLabel(wp.forecast.current.weather_code)}</Text>
+                        <Text style={styles.weatherStats}>
+                          Wave: {wp.marine.current.wave_height}m · Wind: {Math.round(wp.forecast.current.wind_speed_10m * 0.539957)} kn
+                        </Text>
+                      </>
+                    ) : (
+                      <Text style={styles.weatherCondition}>Fetching...</Text>
+                    )}
+                  </View>
+                </View>
+              );
+            })}
+          </View>
+
+          <TouchableOpacity
+            style={styles.activateBtn}
+            onPress={async () => {
+              await saveAndActivateRoute();
+              Alert.alert('Success', 'Route saved and activated for offline use.');
+            }}
+          >
+            <Text style={styles.activateBtnText}>Activate Route</Text>
+          </TouchableOpacity>
         </ScrollView>
       </View>
     );
@@ -84,7 +157,18 @@ export default function RouteScreen() {
         style={styles.scroll}
         contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 32 }]}
       >
-        {/* Origin port card */}
+        {activeRoute && (
+          <View style={styles.activeRouteCard}>
+            <View style={styles.activeRouteHeader}>
+              <Text style={styles.activeRouteTitle}>Current Active Route</Text>
+              <TouchableOpacity onPress={clearRoute}>
+                <Text style={styles.clearRouteText}>Clear</Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.activeRouteDesc}>{activeRoute.origin_id} → {activeRoute.dest_id}</Text>
+          </View>
+        )}
+
         <View style={styles.card}>
           <Text style={styles.sectionLabel}>⚓  Origin Port</Text>
           <TouchableOpacity
@@ -105,23 +189,6 @@ export default function RouteScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Swap row */}
-        <View style={styles.swapRow}>
-          <View style={styles.swapLine} />
-          <TouchableOpacity
-            style={styles.swapBtn}
-            onPress={() => {
-              const tmp = origin;
-              setOrigin(destination);
-              setDestination(tmp);
-            }}
-          >
-            <Text style={styles.swapIcon}>⇅</Text>
-          </TouchableOpacity>
-          <View style={styles.swapLine} />
-        </View>
-
-        {/* Destination port card */}
         <View style={styles.card}>
           <Text style={styles.sectionLabel}>🏁  Destination Port</Text>
           <TouchableOpacity
@@ -142,9 +209,8 @@ export default function RouteScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Vessel speed */}
         <View style={styles.card}>
-          <Text style={styles.sectionLabel}>🚢  Vessel Speed</Text>
+          <Text style={styles.sectionLabel}>🚢  Average Speed</Text>
           <View style={styles.speedRow}>
             <TextInput
               style={styles.speedInput}
@@ -155,76 +221,34 @@ export default function RouteScreen() {
               }}
               keyboardType="numeric"
               maxLength={5}
-              selectTextOnFocus
             />
             <Text style={styles.speedUnit}>knots</Text>
           </View>
         </View>
 
-        {/* Route summary */}
-        {hasBoth ? (
-          <View style={[styles.card, styles.summaryCard]}>
-            <Text style={styles.sectionLabel}>📊  Route Summary</Text>
-            <Text style={styles.routeHeader}>{origin.id} → {destination.id}</Text>
-            <View style={styles.statGrid}>
-              <StatBox label="Distance" value={`${Math.round(dist)} NM`} />
-              <StatBox label="Bearing" value={`${Math.round(bearing)}° ${degreesToCardinal(bearing)}`} />
-              <StatBox label="Duration" value={`${days}d ${hours}h`} />
-              <StatBox label="ETA" value={etaDate ? formatETA(etaDate) : '—'} />
-            </View>
-            <Text style={[styles.sectionLabel, { marginTop: 16 }]}>Waypoints</Text>
-            <WaypointRow number={1} label="Departure" port={origin} isFirst />
-            <View style={styles.waypointConnector} />
-            <WaypointRow number={2} label="Arrival" port={destination} />
-          </View>
-        ) : (
+        {hasBoth && (
+          <TouchableOpacity
+            style={styles.analyzeBtn}
+            disabled={isPreviewLoading}
+            onPress={generatePreview}
+          >
+            {isPreviewLoading ? (
+              <ActivityIndicator color="#0A1628" />
+            ) : (
+              <Text style={styles.analyzeBtnText}>Analyze Route Forecast</Text>
+            )}
+          </TouchableOpacity>
+        )}
+
+        {!hasBoth && (
           <View style={styles.emptyState}>
             <Text style={styles.emptyStateIcon}>🗺️</Text>
             <Text style={styles.emptyStateText}>
-              Select both origin and destination ports to view the route summary.
+              Select origin and destination to begin route weather analysis.
             </Text>
           </View>
         )}
-
-        <View style={styles.attribution}>
-          <Text style={styles.attributionText}>
-            Shipping lanes: CIA World Oceans Map (2012), via Benden (2022), CC BY 4.0
-          </Text>
-        </View>
       </ScrollView>
-    </View>
-  );
-}
-
-function StatBox({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.statBox}>
-      <Text style={styles.statValue}>{value}</Text>
-      <Text style={styles.statLabel}>{label}</Text>
-    </View>
-  );
-}
-
-function WaypointRow({
-  number, label, port, isFirst,
-}: {
-  number: number; label: string; port: Port; isFirst?: boolean;
-}) {
-  return (
-    <View style={styles.waypointRow}>
-      <View style={[styles.waypointDot, isFirst ? styles.waypointDotOrigin : undefined]}>
-        <Text style={styles.waypointNum}>{number}</Text>
-      </View>
-      <View style={styles.waypointContent}>
-        <Text style={styles.waypointLabel}>{label}</Text>
-        <Text style={styles.waypointPort}>{port.name}</Text>
-        <Text style={styles.waypointCoords}>
-          {port.latitude?.toFixed(4)}°, {port.longitude?.toFixed(4)}°
-        </Text>
-      </View>
-      <View style={styles.waypointBadge}>
-        <Text style={styles.waypointBadgeText}>{port.id}</Text>
-      </View>
     </View>
   );
 }
@@ -241,100 +265,54 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  headerTitle: { color: COLORS.textPrimary, fontSize: 20, fontWeight: '700' },
-  cancelBtn: {
-    paddingHorizontal: 14, paddingVertical: 6,
-    borderRadius: 8, borderWidth: 1, borderColor: COLORS.accent,
-  },
-  cancelBtnText: { color: COLORS.accent, fontSize: 13, fontWeight: '600' },
+  headerTitle: { color: COLORS.textPrimary, fontSize: 18, fontWeight: '700' },
+  cancelBtn: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: COLORS.accent },
+  cancelBtnText: { color: COLORS.accent, fontSize: 12, fontWeight: '600' },
   portList: { flex: 1 },
-  portItem: {
-    flexDirection: 'row', alignItems: 'center', padding: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(79, 195, 247, 0.1)',
-  },
-  portFlag: {
-    width: 44, height: 44, borderRadius: 22,
-    backgroundColor: COLORS.bgTertiary,
-    alignItems: 'center', justifyContent: 'center',
-    marginRight: 14, borderWidth: 1, borderColor: 'rgba(79, 195, 247, 0.3)',
-  },
-  portIdText: { color: COLORS.accent, fontSize: 11, fontWeight: '800' },
+  portItem: { flexDirection: 'row', alignItems: 'center', padding: 16, borderBottomWidth: 1, borderBottomColor: 'rgba(79, 195, 247, 0.1)' },
+  portFlag: { width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.bgTertiary, alignItems: 'center', justifyContent: 'center', marginRight: 12 },
+  portIdText: { color: COLORS.accent, fontSize: 10, fontWeight: '800' },
   portInfo: { flex: 1 },
   portName: { color: COLORS.textPrimary, fontSize: 15, fontWeight: '600' },
-  portMeta: { color: COLORS.textSecondary, fontSize: 12, marginTop: 2 },
-  portCoords: { color: COLORS.textSecondary, fontSize: 11, marginTop: 1 },
+  portMeta: { color: COLORS.textSecondary, fontSize: 12 },
   scroll: { flex: 1 },
   scrollContent: { padding: 16 },
-  card: {
-    backgroundColor: COLORS.bgSecondary, borderRadius: 12,
-    padding: 16, marginBottom: 12,
-    borderWidth: 1, borderColor: 'rgba(79, 195, 247, 0.15)',
-  },
-  sectionLabel: {
-    color: COLORS.accent, fontSize: 11, fontWeight: '700',
-    letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 10,
-  },
-  portSelector: {
-    backgroundColor: COLORS.bgTertiary, borderRadius: 8,
-    padding: 14, borderWidth: 1, borderColor: 'rgba(79, 195, 247, 0.2)',
-    minHeight: 52, justifyContent: 'center',
-  },
+  card: { backgroundColor: COLORS.bgSecondary, borderRadius: 12, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: 'rgba(79, 195, 247, 0.15)' },
+  sectionLabel: { color: COLORS.accent, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', marginBottom: 10 },
+  portSelector: { backgroundColor: COLORS.bgTertiary, borderRadius: 8, padding: 14, borderWidth: 1, borderColor: 'rgba(79, 195, 247, 0.2)', minHeight: 52, justifyContent: 'center' },
   portSelectorActive: { borderColor: COLORS.accent },
   portSelectorPlaceholder: { color: COLORS.textSecondary, fontSize: 14, fontStyle: 'italic' },
   selectedPortContent: { flexDirection: 'row', alignItems: 'center' },
-  selectedPortId: { color: COLORS.accent, fontSize: 16, fontWeight: '800', marginRight: 12, minWidth: 40 },
+  selectedPortId: { color: COLORS.accent, fontSize: 16, fontWeight: '800', marginRight: 12 },
   selectedPortDetails: { flex: 1 },
   selectedPortName: { color: COLORS.textPrimary, fontSize: 14, fontWeight: '600' },
-  selectedPortSub: { color: COLORS.textSecondary, fontSize: 12, marginTop: 2 },
-  swapRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
-  swapLine: { flex: 1, height: 1, backgroundColor: 'rgba(79, 195, 247, 0.15)' },
-  swapBtn: {
-    width: 36, height: 36, borderRadius: 18,
-    backgroundColor: COLORS.bgTertiary,
-    alignItems: 'center', justifyContent: 'center',
-    marginHorizontal: 12, borderWidth: 1, borderColor: 'rgba(79, 195, 247, 0.3)',
-  },
-  swapIcon: { color: COLORS.accent, fontSize: 18, fontWeight: '700' },
-  speedRow: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: COLORS.bgTertiary, borderRadius: 8,
-    paddingHorizontal: 14, paddingVertical: 4,
-    borderWidth: 1, borderColor: 'rgba(79, 195, 247, 0.2)',
-  },
-  speedInput: { flex: 1, color: COLORS.textPrimary, fontSize: 22, fontWeight: '700', paddingVertical: 8 },
+  selectedPortSub: { color: COLORS.textSecondary, fontSize: 12 },
+  speedRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.bgTertiary, borderRadius: 8, paddingHorizontal: 14, borderWidth: 1, borderColor: 'rgba(79, 195, 247, 0.2)' },
+  speedInput: { flex: 1, color: COLORS.textPrimary, fontSize: 20, fontWeight: '700', paddingVertical: 10 },
   speedUnit: { color: COLORS.textSecondary, fontSize: 14 },
-  summaryCard: { borderColor: 'rgba(79, 195, 247, 0.35)' },
-  routeHeader: { color: COLORS.textPrimary, fontSize: 18, fontWeight: '700', marginBottom: 16, letterSpacing: 0.5 },
-  statGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  statBox: {
-    flex: 1, minWidth: '45%', backgroundColor: COLORS.bgTertiary,
-    borderRadius: 8, padding: 12, alignItems: 'center',
-    borderWidth: 1, borderColor: 'rgba(79, 195, 247, 0.15)',
-  },
-  statValue: { color: COLORS.accent, fontSize: 16, fontWeight: '700', textAlign: 'center' },
-  statLabel: { color: COLORS.textSecondary, fontSize: 11, marginTop: 4, textAlign: 'center' },
-  waypointRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10 },
-  waypointDot: {
-    width: 28, height: 28, borderRadius: 14,
-    backgroundColor: COLORS.accentDeep,
-    alignItems: 'center', justifyContent: 'center', marginRight: 12,
-  },
-  waypointDotOrigin: { backgroundColor: COLORS.portMarker },
-  waypointNum: { color: '#FFF', fontSize: 11, fontWeight: '800' },
-  waypointContent: { flex: 1 },
-  waypointLabel: { color: COLORS.textSecondary, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.8 },
-  waypointPort: { color: COLORS.textPrimary, fontSize: 14, fontWeight: '600', marginTop: 2 },
-  waypointCoords: { color: COLORS.textSecondary, fontSize: 11, marginTop: 2 },
-  waypointBadge: {
-    backgroundColor: COLORS.bgTertiary, paddingHorizontal: 8, paddingVertical: 4,
-    borderRadius: 6, borderWidth: 1, borderColor: 'rgba(79, 195, 247, 0.2)',
-  },
-  waypointBadgeText: { color: COLORS.accent, fontSize: 11, fontWeight: '700' },
-  waypointConnector: { width: 2, height: 16, backgroundColor: 'rgba(79, 195, 247, 0.3)', marginLeft: 13 },
+  analyzeBtn: { backgroundColor: COLORS.accent, borderRadius: 10, paddingVertical: 16, alignItems: 'center', marginTop: 8 },
+  analyzeBtnText: { color: '#0A1628', fontSize: 15, fontWeight: '800' },
+  activateBtn: { backgroundColor: COLORS.accent, borderRadius: 10, paddingVertical: 18, alignItems: 'center', margin: 16, marginBottom: 40 },
+  activateBtnText: { color: '#0A1628', fontSize: 16, fontWeight: '900' },
+  previewInfo: { padding: 20, backgroundColor: 'rgba(79, 195, 247, 0.1)', margin: 16, borderRadius: 12 },
+  previewSummaryText: { color: COLORS.textPrimary, fontSize: 14, textAlign: 'center' },
+  timeline: { padding: 16 },
+  timelineItem: { flexDirection: 'row', marginBottom: 20 },
+  timeCol: { width: 70, alignItems: 'flex-end', paddingRight: 12 },
+  timeText: { color: COLORS.textPrimary, fontSize: 12, fontWeight: '700' },
+  etaText: { color: COLORS.textSecondary, fontSize: 10, marginTop: 2 },
+  markerCol: { width: 20, alignItems: 'center' },
+  timelineDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: COLORS.accent, zIndex: 1 },
+  timelineLine: { width: 2, flex: 1, backgroundColor: 'rgba(79, 195, 247, 0.2)', position: 'absolute', top: 12, bottom: -12 },
+  weatherCol: { flex: 1, paddingLeft: 12 },
+  weatherCondition: { color: COLORS.textPrimary, fontSize: 14, fontWeight: '600' },
+  weatherStats: { color: COLORS.textSecondary, fontSize: 12, marginTop: 4 },
+  activeRouteCard: { backgroundColor: 'rgba(0, 230, 118, 0.1)', borderRadius: 12, padding: 16, marginBottom: 24, borderWidth: 1, borderColor: 'rgba(0, 230, 118, 0.3)' },
+  activeRouteHeader: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 },
+  activeRouteTitle: { color: '#00E676', fontSize: 11, fontWeight: '800' },
+  activeRouteDesc: { color: COLORS.textPrimary, fontSize: 16, fontWeight: '700' },
+  clearRouteText: { color: COLORS.danger, fontSize: 11, fontWeight: '700' },
   emptyState: { alignItems: 'center', padding: 40 },
-  emptyStateIcon: { fontSize: 48, marginBottom: 16 },
-  emptyStateText: { color: COLORS.textSecondary, fontSize: 14, textAlign: 'center', lineHeight: 22 },
-  attribution: { padding: 12, alignItems: 'center' },
-  attributionText: { color: COLORS.textSecondary, fontSize: 10, textAlign: 'center', lineHeight: 16 },
+  emptyStateIcon: { fontSize: 40, marginBottom: 12 },
+  emptyStateText: { color: COLORS.textSecondary, fontSize: 13, textAlign: 'center' },
 });
